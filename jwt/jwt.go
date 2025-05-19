@@ -1,65 +1,42 @@
-package jwt
+package auth
 
 import (
 	"errors"
 	"time"
 
-	"github.com/golang-jwt/jwt/v5"
+	"github.com/dgrijalva/jwt-go"
+	"golang.org/x/crypto/bcrypt"
 )
 
-type JWT struct {
-	secretKey  string
-	accessTTL  time.Duration
-	refreshTTL time.Duration
+type Config struct {
+	TokenSecret     string
+	TokenExpiration time.Duration
 }
 
-func New(secretKey string, accessTTL time.Duration, refreshTTL time.Duration) *JWT {
-	return &JWT{secretKey: secretKey, accessTTL: accessTTL, refreshTTL: refreshTTL}
-}
-
-func (j *JWT) GenerateAccessToken(userID int64, role string) (string, error) {
+func GenerateToken(userID int64, role string, username string, secret string, expiration time.Duration) (string, error) {
 	claims := jwt.MapClaims{
-		"user_id": userID,
-		"role":    role,
-		"exp":     time.Now().Add(j.accessTTL).Unix(),
-		"iat":     time.Now().Unix(),
+		"user_id":  userID,
+		"role":     role,
+		"username": username,
+		"exp":      time.Now().Add(expiration).Unix(),
 	}
-
 	token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
-	return token.SignedString([]byte(j.secretKey))
+	return token.SignedString([]byte(secret))
 }
 
-func (j *JWT) GenerateRefreshToken(userID int64) (string, error) {
-	claims := jwt.MapClaims{
-		"user_id": userID,
-		"exp":     time.Now().Add(j.refreshTTL).Unix(),
-		"iat":     time.Now().Unix(),
-	}
-
-	token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
-	return token.SignedString([]byte(j.secretKey))
-}
-
-func (j *JWT) ParseToken(tokenStr string) (*jwt.MapClaims, error) {
-	token, err := jwt.Parse(tokenStr, func(token *jwt.Token) (interface{}, error) {
+func ParseToken(tokenString string, secret string) (*jwt.Token, error) {
+	token, err := jwt.Parse(tokenString, func(token *jwt.Token) (interface{}, error) {
 		if _, ok := token.Method.(*jwt.SigningMethodHMAC); !ok {
-			return nil, errors.New("unexpected signing method")
+			return nil, errors.New("invalid signing method")
 		}
-		return []byte(j.secretKey), nil
+		return []byte(secret), nil
 	})
-
+	return token, err
+}
+func HashPassword(password string) (string, error) {
+	hashedPassword, err := bcrypt.GenerateFromPassword([]byte(password), bcrypt.DefaultCost)
 	if err != nil {
-		return nil, err
+		return "", err
 	}
-
-	if !token.Valid {
-		return nil, jwt.ErrInvalidKey
-	}
-
-	claimsMap, ok := token.Claims.(jwt.MapClaims)
-	if !ok {
-		return nil, errors.New("invalid token claims")
-	}
-
-	return &claimsMap, nil
+	return string(hashedPassword), nil
 }
