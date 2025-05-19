@@ -3,41 +3,48 @@ package logger
 import (
 	"go.uber.org/zap"
 	"go.uber.org/zap/zapcore"
-	"log"
-	"os"
 )
 
-var Log *zap.Logger
-
-// InitializeLogger initializes the Zap logger with the specified level.
-// If no level is specified, it defaults to "info".  Uses environment variable for level.
-func InitializeLogger() {
-	level := os.Getenv("LOG_LEVEL")
-	if level == "" {
-		level = "info" // Default log level
-	}
-
-	lvl, err := zapcore.ParseLevel(level)
-	if err != nil {
-		log.Fatalf("Invalid log level: %s", level)
-	}
-
-	config := zap.NewProductionConfig() // Or NewDevelopmentConfig for development
-	config.Level = zap.NewAtomicLevelAt(lvl)
-	config.EncoderConfig.EncodeTime = zapcore.ISO8601TimeEncoder // Optional: Customize time format
-
-	logger, err := config.Build()
-	if err != nil {
-		log.Fatalf("Failed to initialize logger: %v", err)
-	}
-
-	Log = logger
-	Log.Info("Logger initialized", zap.String("level", level))
+type Logger struct {
+	*zap.SugaredLogger
 }
 
-// CloseLogger syncs the logger before exiting.
-func CloseLogger() {
-	if Log != nil {
-		Log.Sync() // Flushes buffer, if any
+func NewLogger(level string) (*Logger, error) {
+	cfg := zap.Config{
+		Encoding:         "console",
+		Level:            zap.NewAtomicLevel(),
+		OutputPaths:      []string{"stdout"},
+		ErrorOutputPaths: []string{"stderr"},
+		EncoderConfig:    zap.NewProductionEncoderConfig(),
 	}
+
+	cfg.EncoderConfig.MessageKey = "message"
+	cfg.EncoderConfig.LevelKey = "level"
+	cfg.EncoderConfig.TimeKey = "time"
+	cfg.EncoderConfig.NameKey = "logger"
+	cfg.EncoderConfig.CallerKey = "caller"
+	cfg.EncoderConfig.StacktraceKey = "stacktrace"
+	cfg.EncoderConfig.EncodeLevel = zapcore.CapitalColorLevelEncoder
+	cfg.EncoderConfig.EncodeTime = zapcore.ISO8601TimeEncoder
+	cfg.EncoderConfig.EncodeDuration = zapcore.StringDurationEncoder
+	cfg.EncoderConfig.EncodeCaller = zapcore.ShortCallerEncoder
+
+	switch level {
+	case "debug":
+		cfg.Level.SetLevel(zap.DebugLevel)
+	case "info":
+		cfg.Level.SetLevel(zap.InfoLevel)
+	case "warn":
+		cfg.Level.SetLevel(zap.WarnLevel)
+	case "error":
+		cfg.Level.SetLevel(zap.ErrorLevel)
+	default:
+		cfg.Level.SetLevel(zap.InfoLevel)
+	}
+
+	zapLogger, err := cfg.Build()
+	if err != nil {
+		return nil, err
+	}
+	return &Logger{zapLogger.Sugar()}, nil
 }
